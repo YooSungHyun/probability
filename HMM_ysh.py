@@ -158,6 +158,7 @@ class Model:
         length = len(sequence)
         # E-Step과 M-Step을 분리하였다.
         def _e_step(sequence):
+            # 기존 forward, backward에서는 t를 dict형태로 활용하였으나, 크사이와 람다는 시계열 순이 중요하기에, list로 선언하여 활용하였다.
             alpha = self.forward(sequence)[0]
             beta = self._backward(sequence)[0]
 
