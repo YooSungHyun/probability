@@ -5,6 +5,7 @@
 
 import collections
 from math import log
+from typing import Tuple
 
 def train(sequences, delta=0.0001, smoothing=0):
     """
@@ -133,8 +134,10 @@ class Model:
     xi = None
     def __init__(self, states, symbols, start_prob=None, trans_prob=None, emit_prob=None, mode=None):
         # 모델의 파라미터를 피클등으로 저장해놓으면 불러서 쓸 수 있게 하려고 조금 수정했다.
-        self.states = set(states)
-        self.symbols = set(symbols)
+        # viterbi에서 dict을 안쓰고, index를 써서 states를 찾기 위해 어쩔 수 없이 list 로 처리하였다.
+        # set보다야 성능은 엉망이지만, 우리는 기술 습득을 위한 학습 목적임을 명심하자.
+        self.states = list(set(states))
+        self.symbols = list(set(symbols))
         if mode is None:
             self.start_prob = _normalize_prob(start_prob, self.states)
             self.trans_prob = _normalize_prob_two_dim(trans_prob, self.states, self.states)
@@ -267,7 +270,7 @@ class Model:
         return '{name}({_states}, {_symbols}, {_start_prob}, {_trans_prob}, {_emit_prob})' \
             .format(name=self.__class__.__name__, **self.__dict__)
 
-    def forward(self, observation_list:list):
+    def forward(self, observation_list:list) -> Tuple[collections.defaultdict, float]:
         # dp[상태][관측값(T)]
         dp = collections.defaultdict(dict)
         # print('Forward Algo')
@@ -288,7 +291,7 @@ class Model:
             forward_prob = dp[stat][len(observation_list)-1] + forward_prob
         return dp, forward_prob
 
-    def _backward(self, observation_list:list):
+    def _backward(self, observation_list:list) -> Tuple[collections.defaultdict, float]:
         # dp[상태][관측값(T)]
         dp = collections.defaultdict(dict)
         # print('Backward Algo')
@@ -308,3 +311,28 @@ class Model:
             backward_prob = dp[stat][0]*self.start_prob[stat]*self.emit_prob[observation_list[0]][stat] + backward_prob
 
         return dp, backward_prob
+        
+    def decoding(self, observation_list:list) -> Tuple[list, list]:
+        # dp[상태][관측값(T)]
+        # viterbi에서는 2차원 배열로 처리하였다. 내장함수만 써서 max를 효과적으로 처리하기 위함.
+        dp = list()
+        print('Viterbi Algo')
+        
+        # start로부터 첫번째 dp를 결정짓기 위함 (initialize)
+        for i in self.states:
+            dp.append([self.start_prob[i]*self.emit_prob[observation_list[0]][i]])
+
+        # forward를 최대한 그대로 기용하였다. max만 쓰는거로 바꿔줬음
+        for observ in range(1,len(observation_list)):
+            for to_stat in self.states:
+                tmp = list()
+                for from_stat in self.states:
+                    tmp.append(dp[self.states.index(from_stat)][observ-1]*self.trans_prob[to_stat][from_stat]*self.emit_prob[observation_list[observ]][to_stat])
+                dp[self.states.index(to_stat)].append(max(tmp))
+
+        # hidden_states_seq를 구하기 위함.
+        # end부터 돌면서 -1로 찾아나가야 FM이긴 한데, 어짜피 dp를 깔끔하게 만들어놓은지라 그냥 순서대로 max index 찾아서 처리하면됨.
+        hidden_states_list = list()    
+        for i in zip(*dp):
+            hidden_states_list.append((self.states[i.index(max(i))],max(i)))
+        return dp, hidden_states_list
